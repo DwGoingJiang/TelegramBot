@@ -1,65 +1,111 @@
 ﻿using System;
+using System.Linq;
+using System.Collections.Generic;
 using Telegram.Bot;
 using Telegram.Bot.Args;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using DwFramework.Core;
+using DwFramework.Core.Plugins;
+using Microsoft.Extensions.Logging;
 
 namespace TelegramBot
 {
-    public static class Client
+    public class Client
     {
-        private static TelegramBotClient _client;
+        private readonly ILogger<Client> _logger;
+        private readonly Data _data;
+        private readonly TelegramBotClient _client;
+        private User _botInfo;
 
-        public static void Init(string token)
+        public Client(string token)
         {
+            _logger = ServiceHost.Provider.GetLogger<Client>();
+            _data = ServiceHost.Provider.GetService<Data>();
             _client = new TelegramBotClient(token);
-            _client.OnMessage += OnMessage;
             _client.OnCallbackQuery += OnCallbackQuery;
-            var me = _client.GetMeAsync().Result;
-            Console.WriteLine($"ID:{me.Id} Name:{me.Username}");
+            _client.OnInlineQuery += OnInlineQuery;
+            _client.OnInlineResultChosen += OnInlineResultChosen;
+            _client.OnMessage += OnMessage;
+            _client.OnMessageEdited += OnMessageEdited;
+            _client.OnReceiveError += OnReceiveError;
+            _client.OnReceiveGeneralError += OnReceiveGeneralError;
+            _client.OnUpdate += OnUpdate;
+            UpdateBotInfoAsync();
             Start();
         }
 
-        public static void Start()
+        public async void UpdateBotInfoAsync()
+        {
+            _botInfo = await _client.GetMeAsync();
+            Console.WriteLine($"ID:{_botInfo.Id} Name:{_botInfo.Username}");
+        }
+
+        public void Start()
         {
             _client.StartReceiving();
         }
 
-        public static void Stop()
+        public void Stop()
         {
             _client.StopReceiving();
         }
 
-        public static void OnMessage(object sender, MessageEventArgs e)
+        private void OnCallbackQuery(object sender, CallbackQueryEventArgs e)
         {
-            var chatId = e.Message.Chat.Id;
-            var message = e.Message.Text;
-            Console.WriteLine($"From:{chatId} Message:{message}");
-            switch (message)
+            Console.WriteLine("OnCallbackQuery");
+        }
+
+        private void OnInlineQuery(object sender, InlineQueryEventArgs e)
+        {
+            Console.WriteLine("OnInlineQuery");
+        }
+
+        private void OnInlineResultChosen(object sender, ChosenInlineResultEventArgs e)
+        {
+            Console.WriteLine("OnInlineResultChosen");
+        }
+
+        private void OnMessage(object sender, MessageEventArgs e)
+        {
+            switch (e.Message.Type)
             {
-                case "/Help":
-                    OnMessageHelp(e.Message);
+                case MessageType.ChatMembersAdded: // 用户加入
+                    Console.WriteLine("用户加入");
                     break;
-                case "/Add":
-                    OnMessageHelp(e.Message);
+                case MessageType.ChatMemberLeft: // 用户离开
+                    Console.WriteLine("用户离开");
                     break;
-            };
+                case MessageType.Text: // 文本消息
+                    Console.WriteLine($"From:{e.Message.Chat.Id} Message:{e.Message.Text}");
+                    // 违禁词
+                    if (_data.NotAllowWords.Contains(e.Message.Text))
+                    {
+                        _client.DeleteMessageAsync(e.Message.Chat.Id, e.Message.MessageId);
+                    }
+                    switch (e.Message.Text.Replace($"@{_botInfo.Username}", ""))
+                    {
+                        case "/start":
+                        case "/help":
+                            OnMessageHelp(e.Message);
+                            break;
+                        case "/add_not_allow_words":
+                            OnMessageAdd(e.Message);
+                            break;
+                    };
+                    break;
+                default:
+                    Console.WriteLine(e.Message.Type);
+                    break;
+            }
         }
 
-        public static void OnCallbackQuery(object sender, CallbackQueryEventArgs e)
-        {
-            Console.WriteLine(e.CallbackQuery.Data);
-            _client.DeleteMessageAsync(e.CallbackQuery.Message.Chat.Id, e.CallbackQuery.Message.MessageId);
-            _client.SendTextMessageAsync(e.CallbackQuery.Message.Chat.Id, "TEST");
-        }
-
-        private static void OnMessageHelp(Message message)
+        private void OnMessageHelp(Message message)
         {
             _client.SendTextMessageAsync(message.Chat.Id,
                 "*尝试使用以下命令:*\n" +
-                "/Help 获取帮助\n" +
-                "/Add 添加链接",
+                "/help 获取帮助\n",
                 parseMode: ParseMode.Markdown,
                 disableNotification: true,
                 replyToMessageId: message.MessageId,
@@ -78,6 +124,43 @@ namespace TelegramBot
                             InlineKeyboardButton.WithCallbackData("x")
                         }
                     }));
+        }
+
+        private void OnMessageAdd(Message message)
+        {
+            if (message.Chat.Type != ChatType.Private)
+            {
+                _client.SendTextMessageAsync(message.Chat.Id,
+                    "*请在私信中继续执行操作*",
+                    parseMode: ParseMode.Markdown,
+                    replyToMessageId: message.MessageId,
+                    replyMarkup: new InlineKeyboardMarkup(
+                        InlineKeyboardButton.WithUrl($"@{_botInfo.Username}", $"https://t.me/{_botInfo.Username}"))
+                    );
+                _client.SendTextMessageAsync(message.From.Id,
+                    "请在私信中操作",
+                    parseMode: ParseMode.Markdown);
+            }
+        }
+
+        private void OnMessageEdited(object sender, MessageEventArgs e)
+        {
+            Console.WriteLine("OnMessageEdited");
+        }
+
+        private void OnReceiveError(object sender, ReceiveErrorEventArgs e)
+        {
+            Console.WriteLine("OnReceiveError");
+        }
+
+        private void OnReceiveGeneralError(object sender, ReceiveGeneralErrorEventArgs e)
+        {
+            Console.WriteLine("OnReceiveGeneralError");
+        }
+
+        private void OnUpdate(object sender, UpdateEventArgs e)
+        {
+            Console.WriteLine("OnUpdate");
         }
     }
 }

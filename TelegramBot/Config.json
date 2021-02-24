@@ -1,0 +1,11 @@
+﻿{
+  "ORM": {
+    "ConnectionConfigs": {
+      "MySql": {
+        "ConnectionString": "server=bancode.net;port=13306;uid=dwgoing;pwd=ayou1209;database=telegram_bot;CharSet=utf8;Allow User Variables=True;Allow Zero Datetime=True;SslMode = none;",
+        "DbType": "MySql",
+        "UseMemoryCache": true
+      }
+    }
+  }
+}
